@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Movie Map</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: auto;
+      background: #f9f9f9;
+      font-family: sans-serif;
+    }
+
+    h1 {
+      background-color: #2d2d2d;
+      color: white;
+      margin: 0;
+      padding: 1em;
+      font-size: 1.5rem;
+      text-align: center;
+    }
+
+    #search {
+      margin: 20px;
+      text-align: center;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      font-size: 16px;
+      width: 80%;
+      max-width: 300px;
+      box-sizing: border-box;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+
+    #viz {
+      display: block;
+      margin: 0 auto;
+      width: 100%;
+      height: 80vh;
+    }
+
+    .node-text {
+      white-space: normal;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+    }
+
+    .node {
+      width: 100px;
+      height: 100px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1.2rem;
+      }
+
+      input[type="text"] {
+        width: 90%;
+        font-size: 14px;
+      }
+
+      button {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>おすすめ映画探索</h1>
+  <div id="search">
+    <input type="text" id="movieInput" placeholder="あなたの好きな映画タイトルを入力" />
+    <br />
+    <button onclick="searchMovie()">検索</button>
+  </div>
+  <svg id="viz"></svg>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const API_KEY = '5a96264c02237f00b058ffc30bbc448e';
+
+    async function searchMovie() {
+      const query = document.getElementById('movieInput').value;
+      if (!query) return;
+
+      const res = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=ja`);
+      const data = await res.json();
+      if (!data.results.length) return alert('映画が見つかりません');
+
+      const movie = data.results[0];
+      const movieId = movie.id;
+
+      const simRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/recommendations?api_key=${API_KEY}&language=ja`);
+      const simData = await simRes.json();
+      const similarMovies = simData.results.slice(0, 8);
+
+      renderGraph(movie.title, similarMovies, movie.id);
+    }
+
+    function splitTitle(title, maxLength = 10) {
+      if (title.length <= maxLength) return [title];
+      const words = title.match(new RegExp(`.{1,${maxLength}}`, 'g'));
+      return words.slice(0, 2); // 最大2行まで表示
+    }
+
+    function renderGraph(centerTitle, similarMovies, centerMovieId) {
+      const width = document.body.clientWidth;
+      const height = Math.max(window.innerHeight * 0.8, 600);
+      const svg = d3.select("#viz").attr("width", width).attr("height", height);
+      svg.selectAll("*").remove();
+
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      // 中心ノード（円）
+      svg.append("circle")
+        .attr("cx", centerX)
+        .attr("cy", centerY)
+        .attr("r", 60)
+        .attr("fill", "#333");
+
+      const centerLines = splitTitle(centerTitle);
+      centerLines.forEach((line, i) => {
+        svg.append("text")
+          .attr("x", centerX)
+          .attr("y", centerY - 10 + i * 18)
+          .attr("fill", "white")
+          .attr("text-anchor", "middle")
+          .style("font-size", "14px")
+          .text(line);
+      });
+
+      // 類似映画ノードの描画
+      similarMovies.forEach((movie, i) => {
+        const angle = (2 * Math.PI / similarMovies.length) * i;
+        const r = 200;
+        const x = centerX + r * Math.cos(angle);
+        const y = centerY + r * Math.sin(angle);
+
+        svg.append("line")
+          .attr("x1", centerX)
+          .attr("y1", centerY)
+          .attr("x2", x)
+          .attr("y2", y)
+          .attr("stroke", "#999");
+
+        const node = svg.append("circle")
+          .attr("cx", x)
+          .attr("cy", y)
+          .attr("r", 45)
+          .attr("fill", "#5a9")
+          .style("cursor", "pointer");
+
+        svg.append("text")
+          .attr("x", x)
+          .attr("y", y + 5)
+          .attr("text-anchor", "middle")
+          .style("font-size", "12px")
+          .text(movie.title.length > 16 ? movie.title.slice(0, 14) + "…" : movie.title);
+
+        node.on("click", async function () {
+          const recRes = await fetch(`https://api.themoviedb.org/3/movie/${movie.id}/recommendations?api_key=${API_KEY}&language=ja`);
+          const recData = await recRes.json();
+          const recommendedMovies = recData.results.slice(0, 8);
+          renderGraph(movie.title, recommendedMovies, movie.id);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
